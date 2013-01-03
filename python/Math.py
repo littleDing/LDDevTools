@@ -48,6 +48,12 @@ def test():
 	print a,sa
 	print b,sb
 	print hamming_distance(sa,sb)
+	html = ""
+	fin = open('1748422.html')
+	for line in fin :
+		html += line
+	for i in range(10):
+		print simhash(html[i*2000:(i+1)*2000])	
 	pass
 
 def main():
