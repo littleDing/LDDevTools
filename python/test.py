@@ -5,4 +5,13 @@ logging.basicConfig(level=0,format='%(asctime)s %(processName)s %(process)s %(me
 
 
 #print multi_ip.get_page("http://172.18.217.117:8888/");
-logging.info('finished!')
+
+def main():
+	logging.info('finished!')
+	pass
+
+
+if __name__ == '__main__' :
+	main()
+
+

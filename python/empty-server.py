@@ -18,7 +18,6 @@ class MainHandler(tornado.web.RequestHandler):
 		print self.request
 	def get(self):
 		print self.request
-		time.sleep(5)
 		self.write('hello world!')
 #		self.write(html)
 		
@@ -35,8 +34,8 @@ def main():
 	])
 	http_server = tornado.httpserver.HTTPServer(application)
 	http_server.listen(options.port)
+	print 'running on ',options.port
 	tornado.ioloop.IOLoop.instance().start()
-
 
 if __name__ == "__main__":
 	main()
