@@ -18,7 +18,7 @@ class MainHandler(tornado.web.RequestHandler):
 		print self.request
 	def get(self):
 		print self.request
-		self.write('hello world!')
+		self.write('alert("hello world")')
 #		self.write(html)
 		
 
