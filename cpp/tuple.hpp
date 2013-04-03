@@ -1,8 +1,14 @@
-
+#include <cmath>
+#include <iostream>
+using std::sqrt;
+using std::ostream;
 template<class T,size_t K>
 class Tuple{
 	T data[K];
 public:
+	enum Size{
+		size = K
+	};
 	const T& operator[](size_t index) const {
 		return data[index];
 	}
@@ -31,7 +37,7 @@ public:
 	};
 };
 template<class T,size_t K>
-ostream& operator<<(ostream& out,const Tuple<T,K>& a){
+ostream& operator<<(ostream& out,const Tuple<T,K> &a){
 	out<<" <";
 	for(int i=0;i<K;++i){
 		if(i!=0) out<<",";
