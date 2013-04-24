@@ -82,11 +82,11 @@ public:
 		}
 		error = 0;
 	}
-	void updateParameters(double learning=0.01,double regular=0.0){
-		bias -= (db + bias*regular)*learning;		
+	void updateParameters(double learning=0.01,double regular=0.0,int n=1){
+		bias -= (db/n + bias*regular)*learning;		
 		db = 0;
 		for(int i=0;i<linkIns.size();++i){
-			linkIns[i].w -= (linkIns[i].dw + linkIns[i].w*regular)*learning;	
+			linkIns[i].w -= (linkIns[i].dw/n + linkIns[i].w*regular)*learning;	
 			linkIns[i].dw =0;
 		}
 	}
@@ -160,8 +160,8 @@ protected:
 			}
 			for(int j=nh-1;j>=0;--j) hiddens[j]->backPropergate();
 		}
-		for(int i=0;i<no;++i) outputs[i]->updateParameters(learning,regular);
-		for(int i=0;i<nh;++i) hiddens[i]->updateParameters(learning,regular);
+		for(int i=0;i<no;++i) outputs[i]->updateParameters(learning,regular,to-from);
+		for(int i=0;i<nh;++i) hiddens[i]->updateParameters(learning,regular,to-from);
 	}
 public:
 	~Network(){	
