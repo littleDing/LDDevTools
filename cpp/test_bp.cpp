@@ -36,26 +36,45 @@ double precision(const vector<vector<double> >& tags,const vector<vector<double>
 	return loss;
 }
 
+
+bool path_exist(const char *path){
+	ifstream fin(path);
+	if(!fin) return false;
+	else return true;
+}
+
 void test(){
-	int n = 100,nx = 8,ny=1;
-	vector<vector<double> > x,y,yy(n);
-	make(n,nx,x,y);
-	
 	Network net;
-	LayerType input,output;
-	input.size = nx;  input.kernel = new Linear();
-	output.size =ny;  output.kernel = new Sigmoid();
-	vector<LayerType> hiddens(2);
-	for(int i=0;i<hiddens.size();++i){
-		hiddens[i].kernel = new Sigmoid();
-		hiddens[i].size = 15;
+	int nx = 100,ny=1,n=nx*log(nx);
+	vector<vector<double> > x,y,yy(n);
+	char path[1024]; sprintf(path,"bpnn.xor.nx%d.ny%d.model",nx,ny);
+	if(path_exist(path)){
+		net.load(path);
+	}else{
+		make(n,nx,x,y);	
+		LayerType input,output;
+		input.size = nx;  input.kernel = new Linear();
+		output.size =ny;  output.kernel = new Sigmoid();
+		int all = 0,last = nx;
+		vector<LayerType> hiddens(1);
+		for(int i=0;i<hiddens.size();++i){
+			hiddens[i].kernel = new Sigmoid();
+			hiddens[i].size = nx;
+			hiddens[i].density = 1;
+			cout<<"hidden size of "<<hiddens[i].size<<endl;
+			all += hiddens[i].size * last * hiddens[i].density;
+			last = hiddens[i].size;
+		}
+		all +=last*ny;
+		cout<<"all links should be :"<<all<<endl;
+		net.reset(input,hiddens,output);
+		double rounds=100,eps = 0.001,learning=0.1,regular=0.0001,momentum=0.1,batch=1,repeat=100,vanE=-1,vanish=1e-3;
+		net.train(x,y,learning,regular,momentum,rounds,eps,batch,repeat,vanE,vanish,"models");
+		net.dump(path);
 	}
-	net.reset(input,hiddens,output);
-	double rounds=100,eps = 0.0001,learning=0.01,regular=0.0001,batch=n,repeat=1000;
-	net.train(x,y,learning,regular,rounds,eps,batch,repeat);
 	net.predict(x,yy);
 	for(int i=0;i<n;++i){
-		cerr<<x[i]<<"\t"<<y[i]<<"\t"<<yy[i]<<endl;
+	//	cerr<<x[i]<<"\t"<<y[i]<<"\t"<<yy[i]<<endl;
 	}
 	make(n,nx,x,y);
 	net.predict(x,yy);
@@ -65,13 +84,14 @@ void test(){
 		cout<<"precision@"<<0.1*i<<"="<<precision(y,yy,0.1*i)<<endl;
 	}
 	for(int i=0;i<n;++i){
-		cerr<<x[i]<<"\t"<<y[i]<<"\t"<<yy[i]<<endl;
+	//	cerr<<x[i]<<"\t"<<y[i]<<"\t"<<yy[i]<<endl;
 	}
 	//cout<<yy<<endl;
 }
 
 int main(){
 	cout<<"hello world"<<endl;
+	cout<<log(10)<<" "<<log(100)<<endl;
 	test();
 	return 0;
 }

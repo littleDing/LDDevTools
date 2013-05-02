@@ -1,20 +1,27 @@
-
-
 #include <vector>
+#include <fstream>
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/export.hpp>
 #include <algorithm>
 #include <cmath>
 #include "operator_extend.hpp"
+#include "macros.h"
 using namespace std;
+using namespace boost::archive;
 
-inline double _random(){return rand()*1.0/RAND_MAX;}
+inline double _random(double from=0.0,double to=1.0){return rand()*1.0/RAND_MAX*(to-from)+from;}
 
 class Kernel{
+	EMPTY_SERIAL()
 public:
 	virtual double f(double x)=0;
 	virtual double df(double x)=0;
 };
 
 class Sigmoid:public Kernel{
+	EMPTY_SERIAL_BASE(Kernel);
 public:
 	virtual double f(double x){
 		return 1.0/(1+exp(-x));
@@ -26,6 +33,7 @@ public:
 };
 
 class Linear:public Kernel{
+	EMPTY_SERIAL_BASE(Kernel);
 public:
 	virtual double f(double x){
 		return x;
@@ -35,11 +43,15 @@ public:
 	}
 };
 
+BOOST_CLASS_EXPORT(Linear)
+BOOST_CLASS_EXPORT(Sigmoid)
+
 class Cell;
 
 struct Link{
 	Cell* cell;
-	double w,dw;
+	double w,dw,dwm;
+	SERIAL_ARG_2(cell,w)
 };
 ostream& operator<<(ostream& out,const Link& link){
 	return out<<" cell:"<<link.cell<<" w:"<<link.w<<" ";
@@ -48,11 +60,13 @@ ostream& operator<<(ostream& out,const Link& link){
 class Cell{
 protected:
 	Kernel* kernel;
-	double bias,db;
+	double bias,db,dbm;
 
 	double input,output,error;
 
 	vector<Link> linkIns;
+	SERIAL_ARG_3(kernel,bias,linkIns)
+
 	void collectInput(){
 		input = bias;
 		for(int i=0;i<linkIns.size();++i){
@@ -61,17 +75,20 @@ protected:
 	}
 public:
 //methods for network
-	Cell(Kernel* k):kernel(k),bias(_random()),input(0),output(0),error(0),db(0){}
+	Cell(Kernel* k=NULL):kernel(k),bias(_random(-0.5,0.5)),input(0),output(0),error(0),db(0){
+		dbm=0;
+	}
 	void addLinkIn(Cell* cell,double w){
 		Link link; 
-		link.cell = cell; link.w = w; link.dw = 0;
-		linkIns.push_back(link);		
+		link.cell = cell; link.w = w; link.dw = 0; link.dwm =0;
+		linkIns.push_back(link);	
 	}
 	void setBias(double b){ bias=b;}
 	void addError(double e){error+=e;}
 	void updateState(){
 		collectInput();
 		output = kernel->f(input);
+		error = 0;
 	}
 	void backPropergate(){
 		double dldx =error*kernel->df(input);
@@ -82,12 +99,18 @@ public:
 		}
 		error = 0;
 	}
-	void updateParameters(double learning=0.01,double regular=0.0,int n=1){
-		bias -= (db/n + bias*regular)*learning;		
-		db = 0;
+	void updateParameters(double learning=0.01,double regular=0.0,int n=1,double momentum=0.05,double eps=1e-3){
+		bias -= (db/n + bias/n*regular + dbm*momentum)*learning;		
+		dbm =db; db =0;
 		for(int i=0;i<linkIns.size();++i){
-			linkIns[i].w -= (linkIns[i].dw/n + linkIns[i].w*regular)*learning;	
-			linkIns[i].dw =0;
+			linkIns[i].w -= (linkIns[i].dw/n + linkIns[i].w/n*regular +linkIns[i].dwm*momentum)*learning;	
+			if(eps>0 && fabs(linkIns[i].w)<eps && fabs(linkIns[i].dw/n) < eps/100){
+				linkIns.erase(linkIns.begin()+i);
+				--i;
+				cerr<<" remove occurs"<<endl;
+				continue;
+			}
+			linkIns[i].dwm = linkIns[i].dw; linkIns[i].dw =0;
 		}
 	}
 //methods for other cell
@@ -105,7 +128,8 @@ struct LayerType{
 	Kernel *kernel;
 	int size;
 	bool links;	//links inside layer
-	LayerType(Kernel* k=NULL,int s=0,bool l=false):kernel(k),size(s),links(l){}
+	double density; // link density
+	LayerType(Kernel* k=NULL,int s=0,bool l=false,double d=1):kernel(k),size(s),links(l),density(d){}
 };
 
 double rmse(const vector<vector<double> > & y,const vector<vector<double> >& predict){
@@ -123,14 +147,17 @@ class Network{
 protected:
 	vector<Cell*> inputs,hiddens,outputs;
 	int ni,nh,no;
-	int hiddenLayers;
+	SERIAL_ARG_6(inputs,hiddens,outputs,ni,nh,no);
 
 	void addCells(vector<Cell*>& layer,LayerType cType,vector<Cell*>& pres,LayerType pType){
 		int np = pres.size(),nl=layer.size();
+		double eps = 1.0/np;
 		for(int i=0;i<cType.size;++i){
 			Cell *cell =new Cell(cType.kernel);
 			for(int j=0;j<pType.size;++j){
-				cell->addLinkIn(pres[np-1-j],_random()-0.5);
+				if(_random()<=cType.density){
+					cell->addLinkIn(pres[np-1-j],_random(-eps,eps));
+				}
 			}
 			layer.push_back(cell);
 		}
@@ -149,7 +176,8 @@ protected:
 	}
 	void doTrain(const vector<vector<double> >& x,const vector<vector<double> >& y
 				,const vector<int>& indexes,int from,int to
-				,double learning,double regular=0
+				,double learning,double regular=0,double momentum=0.05
+				,double vanish=0.0
 				){
 		if(to>=indexes.size()) to = indexes.size();
 		for(int i=from;i<to;++i){
@@ -160,8 +188,8 @@ protected:
 			}
 			for(int j=nh-1;j>=0;--j) hiddens[j]->backPropergate();
 		}
-		for(int i=0;i<no;++i) outputs[i]->updateParameters(learning,regular,to-from);
-		for(int i=0;i<nh;++i) hiddens[i]->updateParameters(learning,regular,to-from);
+		for(int i=0;i<no;++i) outputs[i]->updateParameters(learning,regular,to-from,momentum,vanish);
+		for(int i=0;i<nh;++i) hiddens[i]->updateParameters(learning,regular,to-from,momentum,vanish);
 	}
 public:
 	~Network(){	
@@ -175,26 +203,42 @@ public:
 			addCells(hiddens,hidden[i],hiddens,hidden[i-1]);
 		}
 		addCells(outputs,output,hiddens,hidden[hidden.size()-1]);
-		hiddenLayers = hidden.size();
 		ni = inputs.size(); nh=hiddens.size(); no=outputs.size();
+	}
+	void dump(char* path){
+		ofstream fout(path);
+		binary_oarchive oa(fout);
+		oa<<*this;
+	}
+	void load(char* path){
+		ifstream fin(path);
+		binary_iarchive ia(fin);
+		ia>>(*this);
 	}
 // methods for applications
 	void train(const vector<vector<double> >& x,const vector<vector<double> >& y
-			,double learning=0.01,double regular=0.0
+			,double learning=0.01,double regular=0.0,double momentum=0.05
 			,int rounds=100,double eps=0.01
 			,int batch=0,int repeat=1
+			,int vanishEnd=10,double vanish=1e-3
+			,const char *saveDir = NULL
 			){
 		int n = x.size();
 		if(batch<=0) batch=n;
 		vector<int> indexes(n);	for(int i=0;i<n;++i) indexes[i]=i;
 		double last = 99e99,error=99e99;
 		vector<vector<double> > predicts;
+		double van = -1;
 		for(int r=0;r<rounds;++r){
 			for(int p=0;p<repeat;++p){
 				random_shuffle(indexes.begin(),indexes.end());
 				for(int i=0;i<n;i+=batch){
-					doTrain(x,y,indexes,i,i+batch,learning,regular);
+					doTrain(x,y,indexes,i,i+batch,learning,regular,momentum,van);
 				}
+			}
+			if(saveDir){
+				char path[1024]; sprintf(path,"%s/%d.model",saveDir,r);
+				dump(path);
 			}
 			predict(x,predicts);
 			error = rmse(y,predicts);
@@ -202,6 +246,8 @@ public:
 			if(error<eps || fabs(error-last) < eps*eps) break;
 			//if(error<eps) break;
 			last = error;
+			if(r<vanishEnd) van = vanish;
+			else van = -1;
 		}
 	}
 	void predict(const vector<vector<double> >& x,vector<vector<double> >& y){
