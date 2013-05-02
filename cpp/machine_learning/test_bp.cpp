@@ -70,7 +70,7 @@ void test(){
 		net.reset(input,hiddens,output);
 		double rounds=100,eps = 0.001,learning=0.1,regular=0.0001,momentum=0.1,batch=1,repeat=100,vanE=-1,vanish=1e-3;
 		net.train(x,y,learning,regular,momentum,rounds,eps,batch,repeat,vanE,vanish,"models");
-		net.dump(path);
+		net.save(path);
 	}
 	net.predict(x,yy);
 	for(int i=0;i<n;++i){

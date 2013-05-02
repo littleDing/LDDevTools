@@ -8,10 +8,10 @@
 #include <cmath>
 #include "operator_extend.hpp"
 #include "macros.h"
+#include "model.hpp"
 using namespace std;
 using namespace boost::archive;
 
-inline double _random(double from=0.0,double to=1.0){return rand()*1.0/RAND_MAX*(to-from)+from;}
 
 class Kernel{
 	EMPTY_SERIAL()
@@ -143,7 +143,8 @@ double rmse(const vector<vector<double> > & y,const vector<vector<double> >& pre
 	return sqrt(ret/y.size());
 }
 
-class Network{
+
+class Network : public Model<double> {
 protected:
 	vector<Cell*> inputs,hiddens,outputs;
 	int ni,nh,no;
@@ -205,19 +206,18 @@ public:
 		addCells(outputs,output,hiddens,hidden[hidden.size()-1]);
 		ni = inputs.size(); nh=hiddens.size(); no=outputs.size();
 	}
-	void dump(char* path){
-		ofstream fout(path);
-		binary_oarchive oa(fout);
-		oa<<*this;
-	}
-	void load(char* path){
-		ifstream fin(path);
-		binary_iarchive ia(fin);
-		ia>>(*this);
-	}
 // methods for applications
+	double train(const vector<vector<double> >& x,const vector<vector<double> >& y){
+		train(x,y,0.01,0,0,1);
+		vector<vector<double> > predicts;
+		predict(x,predicts);
+		return rmse(y,predicts);
+	}
+	void fit(const vector<vector<double> >& x,const vector<vector<double> >& y){
+		train(x,y,0.01);
+	}
 	void train(const vector<vector<double> >& x,const vector<vector<double> >& y
-			,double learning=0.01,double regular=0.0,double momentum=0.05
+			,double learning,double regular=0.0,double momentum=0.05
 			,int rounds=100,double eps=0.01
 			,int batch=0,int repeat=1
 			,int vanishEnd=10,double vanish=1e-3
@@ -238,7 +238,7 @@ public:
 			}
 			if(saveDir){
 				char path[1024]; sprintf(path,"%s/%d.model",saveDir,r);
-				dump(path);
+				save(path);
 			}
 			predict(x,predicts);
 			error = rmse(y,predicts);
