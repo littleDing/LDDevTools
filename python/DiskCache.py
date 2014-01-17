@@ -1,5 +1,6 @@
 import cPickle
 import os
+import logging
 
 def next_safe(iterable):
 	item = None
@@ -43,21 +44,28 @@ def writeToDiskCache(filename,iterable,buffsize=1024):
 class CachedDataLoader():
 	def __init__(self,memcached=True):
 		self.memcache = {} if memcached else None
-	def load_data(self,path,loader,reuse=True):
-		return self.load_object(path,loader,reuse)
-	def load_object(self,path,loader,reuse=True):
+	def load_data(self,path,loader,reuse=True,diskOperators=None):
+		return self.load_object(path,loader,reuse,diskOperators)
+	def load_object(self,path,loader,reuse=True,diskOperators=None):
+		logging.warn(('loading_object',path,loader,reuse))
+		ret = None
+		if diskOperators == None:
+			diskOperators = (lambda s:cPickle.load(open(s))),(lambda x,s:cPickle.dump(x,open(s,'w')))
+		reader,writer = diskOperators
 		if reuse and self.memcache !=None and path in self.memcache:
-			return self.memcache[path]
+			ret = self.memcache[path]
 		elif reuse and os.path.exists(path):
-			return cPickle.load(open(path))
+			ret = reader(path)
 		else :
 			data = loader()
-			cPickle.dump(data,open(path,'w'))
+			writer(data,path)
 			if self.memcache !=None :
 				self.memcache[path] = data
-			return data
-	def load_enumerate(self,path,loader,reuse=True,buffsize=1024*100):
-		print 'load_enumerate',path
+			ret = data
+		logging.warn(('load_object_done',path,loader,reuse))
+		return ret
+	def load_enumerate(self,path,loader,reuse=True,buffsize=1024*10,diskOperators=None):
+		logging.warn(('loading_enumerate',path))
 		if reuse and self.memcache !=None and path in self.memcache:
 			for item in self.memcache[path]:
 				yield item
@@ -99,28 +107,40 @@ def load_diskcached_data(path,loader,reuse=True):
 	return load_cached_data(path,loader,reuse,False)
 def load_memcached_data(path,loader,reuse=True):
 	return load_cached_data(path,loader,reuse,True)
-
+def diskcached(path,reuse=True):
+	def make_loader(loader):
+		def _loader():
+			return load_diskcached_data(path,loader,reuse)
+		return _loader
+	return make_loader
 class Database():
 	def __init__(self,path,memcached=True):
 		self.path = path
 		self.datas = CachedDataLoader(memcached)
 		self.loaders = {}
-	def add_data(self,name,loader,_type='enumerate'):
-		self.loaders[name] = (loader,_type)
-	def load_data(self,name,arg):
-		loader,_type = self.loaders[name]
-		path = self.path + name + str(arg).replace('/','|')
+	def add_data(self,name,loader,_type='enumerate',_diskOperators=None):
+		self.loaders[name] = (loader,_type,_diskOperators)
+	def load_data(self,name,*arg):
+		logging.debug(self.loaders)
+		loader,_type,_ops = self.loaders[name]
+		path = self.path + name + str(arg).replace('/','__').replace('\'','__')
 		if _type == 'object':
-			data = self.datas.load_object(path,lambda:loader(arg))
+			data = self.datas.load_object(path,lambda:loader(*arg),diskOperators=_ops)
 		elif _type == 'enumerate':
-			data = self.datas.load_enumerate(path,lambda:loader(arg))
+			data = self.datas.load_enumerate(path,lambda:loader(*arg),diskOperators=_ops)
 		return data
 		
 import conf
 database = Database(conf.PICKLE_DIR)
 def load_data(name,arg):
 	return database.load_data(name,arg)
-
+def dbcached(db=database,_type='enumerate',_diskOperators=None):
+	def _dbcached(loader):
+		def _load_data(*arg):
+			return db.load_data(loader.__name__,*arg)
+		db.add_data(loader.__name__,loader,_type,_diskOperators)
+		return _load_data
+	return _dbcached
 
 import tempfile
 class DiskSorter():
