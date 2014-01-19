@@ -1,0 +1,47 @@
+function print_help(){
+	echo "Usage	$0 URL"
+}
+
+wget --accept=pdf --reject=txt -nd -r --level=1 "$1"
+echo '
+try :
+	import logging,traceback,glob,os
+	import pdfminer
+	from pdfminer import *
+	from pdfminer.pdfdocument import PDFDocument,PDFNoOutlines
+	from pdfminer.pdfparser import PDFParser
+	from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+	from pdfminer.converter import PDFPageAggregator
+	from pdfminer.layout import LAParams, LTTextBox, LTTextLine, LTFigure, LTImage
+	from pdfminer.pdfpage import PDFPage
+	logging.basicConfig(level=logging.INFO,format="%(asctime)s %(funcName)s@%(filename)s#%(lineno)d %(levelname)s %(message)s")
+	for fname in glob.glob("./*.pdf"):
+		logging.info("preceeding %s"%fname)
+		try:
+			fp = open(fname)
+			parser = PDFParser(fp)
+			doc = PDFDocument(parser)
+			doc.initialize()
+			rsrcmgr = PDFResourceManager()
+			laparams = LAParams()
+			device = PDFPageAggregator(rsrcmgr, laparams=laparams)
+			interpreter = PDFPageInterpreter(rsrcmgr, device)
+			title = None
+			for page in PDFPage.create_pages(doc):
+				interpreter.process_page(page)
+				layout = device.get_result()
+				title = layout._objs[0].get_text().strip()
+				break
+			logging.info("extracted title %s"%(title))
+			if title != None and len(title)>0:
+				os.rename(fname,title+".pdf")
+		except Exception,e:
+			traceback.print_exc()
+			logging.error(e)
+		logging.info("Done.")
+
+except Exception,e:
+	traceback.print_exc()
+	logging.error(e)
+' | python
+
