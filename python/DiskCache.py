@@ -1,4 +1,5 @@
 import cPickle
+import marshal
 import os
 import logging
 
@@ -8,49 +9,50 @@ def next_safe(iterable):
 		break
 	return item
 
-def DiskCacheReader(filename):
+def DiskCacheReader(filename,serializer=cPickle):
 	with open(filename) as fin:
 		try:
 			while True:
-				buff = cPickle.load(fin)
+				buff = serializer.load(fin)
 				for item in buff:
 					yield item
 		except:
 			pass
 
-def DiskCacheWriter(filename,iterable,buffsize=1024):
+def DiskCacheWriter(filename,iterable,buffsize=1024,serializer=cPickle):
 	with open(filename,'w') as fout:
 		buff = []
 		for item in iterable:
 			buff.append(item)
 			if len(buff) ==buffsize:
-				cPickle.dump(buff,fout)
+				serializer.dump(buff,fout)
 				buff = []
 			yield item	
 		if len(buff) != 0:
-			cPickle.dump(buff,fout)
+			serializer.dump(buff,fout)
 
-def writeToDiskCache(filename,iterable,buffsize=1024):
+def writeToDiskCache(filename,iterable,buffsize=1024,serializer=cPickle):
 	with open(filename,'w') as fout:
 		buff = []
 		for item in iterable:
 			buff.append(item)
 			if len(buff) ==buffsize:
-				cPickle.dump(buff,fout)
+				serializer.dump(buff,fout)
 				buff = []
 		if len(buff) != 0:
-			cPickle.dump(buff,fout)
+			serializer.dump(buff,fout)
 
 class CachedDataLoader():
-	def __init__(self,memcached=True):
+	def __init__(self,memcached=True,serializer=cPickle):
 		self.memcache = {} if memcached else None
+		self.serializer = serializer
 	def load_data(self,path,loader,reuse=True,diskOperators=None):
 		return self.load_object(path,loader,reuse,diskOperators)
 	def load_object(self,path,loader,reuse=True,diskOperators=None):
 		logging.warn(('loading_object',path,loader,reuse))
 		ret = None
 		if diskOperators == None:
-			diskOperators = (lambda s:cPickle.load(open(s))),(lambda x,s:cPickle.dump(x,open(s,'w')))
+			diskOperators = (lambda s:self.serializer.load(open(s))),(lambda x,s:self.serializer.dump(x,open(s,'w')))
 		reader,writer = diskOperators
 		if reuse and self.memcache !=None and path in self.memcache:
 			ret = self.memcache[path]
@@ -64,13 +66,14 @@ class CachedDataLoader():
 			ret = data
 		logging.warn(('load_object_done',path,loader,reuse))
 		return ret
-	def load_enumerate(self,path,loader,reuse=True,buffsize=1024*10,diskOperators=None):
+	def load_enumerate(self,path,loader,reuse=True,buffsize=1024,diskOperators=None):
 		logging.warn(('loading_enumerate',path))
 		if reuse and self.memcache !=None and path in self.memcache:
 			for item in self.memcache[path]:
 				yield item
 		elif reuse and os.path.exists(path):
-			for item in DiskCacheReader(path):
+			return DiskCacheReader(path,serializer=self.serializer)
+			for item in DiskCacheReader(path,serializer=self.serializer):
 				yield item 
 		else :
 			data = []
@@ -81,18 +84,18 @@ class CachedDataLoader():
 						data.append(item)
 						buff.append(item)
 						if len(buff) ==buffsize:
-							cPickle.dump(buff,fout)
+							self.serializer.dump(buff,fout)
 							buff = []
 						yield item
 				else :
 					for item in loader():
 						buff.append(item)
 						if len(buff) ==buffsize:
-							cPickle.dump(buff,fout)
+							self.serializer.dump(buff,fout)
 							buff = []
 						yield item
 				if len(buff) != 0:
-					cPickle.dump(buff,fout)
+					self.serializer.dump(buff,fout)
 			if self.memcache !=None :
 				self.memcache[path] = data
 
@@ -114,9 +117,10 @@ def diskcached(path,reuse=True):
 		return _loader
 	return make_loader
 class Database():
-	def __init__(self,path,memcached=True):
+	def __init__(self,path,memcached=True,buffsize=1024,**arg):
 		self.path = path
-		self.datas = CachedDataLoader(memcached)
+		self.buffsize = buffsize
+		self.datas = CachedDataLoader(memcached,**arg)
 		self.loaders = {}
 	def add_data(self,name,loader,_type='enumerate',_diskOperators=None):
 		self.loaders[name] = (loader,_type,_diskOperators)
@@ -127,7 +131,7 @@ class Database():
 		if _type == 'object':
 			data = self.datas.load_object(path,lambda:loader(*arg),diskOperators=_ops)
 		elif _type == 'enumerate':
-			data = self.datas.load_enumerate(path,lambda:loader(*arg),diskOperators=_ops)
+			data = self.datas.load_enumerate(path,lambda:loader(*arg), buffsize=self.buffsize, diskOperators=_ops)
 		return data
 		
 import conf
