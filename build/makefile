@@ -1,5 +1,5 @@
 BASICS = prepare #git wget unzip tar python perl
-OBJS = doxygen 
+OBJS = doxygen doxypy easy_installs
 PWD = $(shell pwd)
 
 ## decompress tools, may vary from platforms
@@ -34,6 +34,9 @@ all : $(OBJS)
 
 prepare :
 	mkdir -p build
+
+easy_installs :
+	easy_install xmltodict dicttoxml
 
 doxygen : $(BASICS)
 	$(call ensure_exists,"doxygen","https://github.com/doxygen/doxygen/archive/master.zip","zip","doxygen-master")
