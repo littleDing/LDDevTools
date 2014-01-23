@@ -48,6 +48,7 @@ doxypy : $(BASICS)
 	cd doxypy-0.4.2 && python setup.py install
 
 rouge : $(BASICS) 
+	echo install XML::DOM | perl -MCPAN
 	$(call ensure_exists,"ROUGE-1.5.5","http://research.microsoft.com/~cyl/download/ROUGE-1.5.5.tgz","tgz","RELEASE-1.5.5")
 	cd ROUGE-1.5.5/data/WordNet-2.0-Exceptions && ./buildExeptionDB.pl ./ db ../WordNet-3.0.exc.db >/dev/null && mv ../WordNet-3.0.exc.db ../WordNet-2.0.exc.db
 	echo "export ROUGE_EVAL_HOME="$(PWD)"/ROUGE-1.5.5/data" >> ~/.bashrc
